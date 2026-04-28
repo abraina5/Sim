@@ -2,7 +2,6 @@ import pandas as pd
 import numpy as np
 import requests
 from datetime import date
-from scipy.stats import norm
 
 response = requests.get("https://api.votehub.com/polls")
 data = response.json()
@@ -11,7 +10,7 @@ df = pd.DataFrame(data)
 
 df["end_date"] = pd.to_datetime(df["end_date"], errors="coerce")
 
-mask = ((pd.Timestamp(date.today()) - df["end_date"]).dt.days < 45)
+mask = ((pd.Timestamp(date.today()) - df["end_date"]).dt.days < 60)
 new = df[mask].copy()
 
 #Trump Approval aggregator
@@ -23,11 +22,9 @@ favorabilityDF["approve_pct"] = favorabilityDF["answers"].apply(
     lambda x: next((item["pct"] for item in x if item["choice"] == "Approve"), None)
 )
 
-favorabilityDF["MoE"] = 1.96 * (
-    (favorabilityDF["approve_pct"] / 100) *
-    (1 - favorabilityDF["approve_pct"] / 100) /
-    favorabilityDF["sample_size"]
-) ** 0.5 * 100
+# Utilizing 0.5 to maximize MoE
+
+favorabilityDF["MoE"] = 1.96 * ((0.5*0.5) / favorabilityDF["sample_size"]) ** 0.5 * 100
 
 favorabilityDF["MoE"] = favorabilityDF["MoE"].round(3)
 
@@ -35,6 +32,29 @@ print(favorabilityDF[["approve_pct","MoE"]])
 print(favorabilityDF.shape)
 print(favorabilityDF.columns)
 print(favorabilityDF["answers"].head())
+
+# Polls weighting for aggregate based on days since
+
+favorabilityDF["days_old"] = (pd.Timestamp.today() - favorabilityDF["end_date"]).dt.days
+lmbda = 0.05
+favorabilityDF["weight"] = np.exp(-lmbda * favorabilityDF["days_old"])
+favorabilityDF["norm_weight"] = favorabilityDF["weight"] / favorabilityDF["weight"].sum()
+
+# Calculate Weighted Metrics
+weighted_approval = (favorabilityDF["approve_pct"] * favorabilityDF["norm_weight"]).sum()
+
+# Aggregate MoE (Using combined sample size for overall uncertainty)
+total_n = favorabilityDF["sample_size"].sum()
+
+# We use p=0.5 for a conservative, model-based estimate
+sampling_error = np.sqrt(0.25 / total_n) * 100
+
+non_sampling_error = 2.0
+
+sigma = np.sqrt(sampling_error**2 + non_sampling_error**2)
+sigma = sigma.round(3)
+
+print(sigma)
 
 # Older election day approval vs vote received (All from Gallup)
 
