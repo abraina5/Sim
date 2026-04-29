@@ -52,8 +52,11 @@ sampling_error = np.sqrt(0.25 / total_n) * 100
 non_sampling_error = 2.0
 
 sigma = np.sqrt(sampling_error**2 + non_sampling_error**2)
-sigma = sigma.round(3)
+sigma = (sigma / 100).round(5)
 
+estimated_votes_approval = (0.39*(weighted_approval / 100) + 0.3)
+
+print(estimated_votes_approval)
 print(sigma)
 
 # Older election day approval vs vote received (All from Gallup)
